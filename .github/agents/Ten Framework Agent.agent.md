@@ -1,0 +1,79 @@
+---
+name: Ten Framework Agent
+description: This custom agent provides guidance and instructions for working with the Ten Framework, including repository structure, git conventions, documentation commands, and domain-specific skills. Use this agent when you need to understand or follow the Ten Framework's development and review processes.
+argument-hint: "a task to implement or a question about the Ten Framework"
+# tools: ['vscode', 'execute', 'read', 'agent', 'edit', 'search', 'web', 'todo'] # specify the tools this agent can use. If not set, all enabled tools are allowed.
+---
+
+<!-- Tip: Use /create-agent in chat to generate content with agent assistance -->
+
+# AI Agent Instructions
+
+This repository uses progressive disclosure documentation to help AI coding
+agents work efficiently. Documentation is structured in three levels under
+`docs/ai/`.
+
+## How to Load
+
+1. Read [docs/ai/L0_repo_card.md](docs/ai/L0_repo_card.md) to identify the repo.
+2. Load ALL 8 files in `docs/ai/L1/`. They are small — load all of them upfront.
+   This gives you setup, architecture, code map, conventions, workflows,
+   interfaces, gotchas, and security.
+3. If a task needs more detail than L1 provides, follow links to L2 deep dives
+   in `docs/ai/L1/deep_dives/`. Load only the specific L2 file you need.
+
+## Levels
+
+- **L0 (Repo Card):** Identity and L1 index. Table of contents.
+- **L1 (Summaries):** Eight structured summaries. Load all at session start.
+- **L2 (Deep Dives):** Full specifications. Load only when L1 isn't detailed enough.
+
+## Git Conventions
+
+### Commit messages — conventional commits
+
+- **Format:** `type: description` or `type(scope): description`
+- **Types:** `feat:` (new feature), `fix:` (bug fix), `chore:` (maintenance, version bumps), `test:` (test additions/changes), `docs:` (documentation)
+- **Scoped variant:** `feat(scope):`, `fix(scope):` — e.g. `feat(auth): add token refresh`
+- **Lowercase after prefix** — `feat: add feature`, not `feat: Add feature`
+- **Present tense** — "add feature", not "added feature"
+- **PR number appended** — `feat: add feature (#123)`
+
+### Branch names
+
+- **Format:** `type/short-description` — lowercase, hyphen-separated
+- **Types match commit types:** `feat/`, `fix/`, `chore/`, `test/`, `docs/`
+- **Examples:** `feat/token-refresh`, `fix/null-pointer`, `docs/progressive-disclosure`
+
+### General rules
+
+- **No AI tool names** — never mention claude, cursor, copilot, cody, aider, gemini, codex, chatgpt, or gpt-3/4
+- **No Co-Authored-By trailers** — omit AI attribution lines
+- **No --no-verify** — let git hooks run normally
+- **No git config changes** — do not modify user.name or user.email
+
+## Doc Commands
+
+| Command       | When to use                                  |
+| ------------- | -------------------------------------------- |
+| generate docs | no `docs/ai/` directory exists yet           |
+| update docs   | code changed since last `last_reviewed` date |
+| test docs     | verify docs give agents the right context    |
+
+For detailed procedures, read
+[progressive-disclosure-standard.md](docs/progressive-disclosure-standard.md)
+sections 6 (generate) and 7 (bootstrap).
+
+## Working Areas
+
+- `ai_agents/` — primary area for agents, examples, server, integrations
+- `core/`, `packages/`, `build/` — framework internals
+
+## Domain Skills
+
+- For pull-request or diff reviews of implementation, configuration, dependency,
+  or test changes inside `ai_agents/agents/ten_packages/extension/<tts-extension>/`,
+  load and follow
+  [ten-tts-review](.agents/skills/ten-tts-review/SKILL.md).
+- Do not apply that skill to `ten_ai_base`, `tts_guarder`, examples, graphs, or
+  paths outside the TTS extension directory.

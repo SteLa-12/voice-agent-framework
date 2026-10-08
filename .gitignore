@@ -143,3 +143,7 @@ ai_agents/*.log
 ai_agents/*.pcm
 ai_agents/*.pem
 /.trae
+ai_agents/agents/voice-agent/tenapp/ten_packages/extension/*
+!ai_agents/agents/voice-agent/tenapp/ten_packages/extension/agora_rtc
+!ai_agents/agents/voice-agent/tenapp/ten_packages/extension/main_jev_python
+!ai_agents/agents/voice-agent/tenapp/ten_packages/extension/main_python

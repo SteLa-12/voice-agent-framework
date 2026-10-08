@@ -1,0 +1,246 @@
+package ten_ai_base
+
+import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"strings"
+)
+
+var DefaultHeaderKeys = []string{"authorization", "api-key", "x-api-key", "xi-api-key"}
+
+var DefaultJSONKeys = append(
+	[]string{
+		"accesskey",
+		"apikey",
+		"appkey",
+		"authorization",
+		"key",
+		"password",
+		"secret",
+		"secretid",
+		"secretkey",
+		"ststoken",
+		"token",
+		"vendorkey",
+		"vendorsecret",
+	},
+	DefaultHeaderKeys...,
+)
+
+var DefaultURLKeys = append(
+	[]string{
+		"sign",
+		"signature",
+	},
+	DefaultJSONKeys...,
+)
+
+func maskDefault(value string) string {
+	if value == "" {
+		return value
+	}
+	runes := []rune(value)
+	step := len(runes) / 5
+	if step <= 0 {
+		return value
+	}
+	if step > 5 {
+		step = 5
+	}
+	sum := sha256.Sum256([]byte(value))
+	fingerprint := fmt.Sprintf("%x", sum[:4])
+	return string(runes[:step]) + "..." + string(runes[len(runes)-step:]) + "#" + fingerprint
+}
+
+func MaskSecret(value string) string {
+	return maskDefault(value)
+}
+
+func Encrypt(value string) string {
+	return MaskSecret(value)
+}
+
+func RedactHeaders(headers map[string]string, headerKeys ...[]string) map[string]string {
+	if headers == nil {
+		return nil
+	}
+	if len(headers) == 0 {
+		return map[string]string{}
+	}
+
+	var effectiveHeaderKeys []string
+	if len(headerKeys) > 0 {
+		effectiveHeaderKeys = headerKeys[0]
+	}
+	if effectiveHeaderKeys == nil {
+		effectiveHeaderKeys = DefaultHeaderKeys
+	}
+	normalizedHeaderKeys := make(map[string]struct{}, len(effectiveHeaderKeys))
+	for _, key := range effectiveHeaderKeys {
+		normalizedHeaderKeys[strings.ToLower(key)] = struct{}{}
+	}
+
+	redacted := make(map[string]string, len(headers))
+	for key, value := range headers {
+		if _, ok := normalizedHeaderKeys[strings.ToLower(key)]; ok {
+			redacted[key] = MaskSecret(value)
+			continue
+		}
+		redacted[key] = value
+	}
+	return redacted
+}
+
+func RedactURL(rawURL string, urlKeys ...[]string) string {
+	if rawURL == "" {
+		return rawURL
+	}
+
+	queryStart := strings.Index(rawURL, "?")
+	if queryStart < 0 {
+		return rawURL
+	}
+
+	var effectiveURLKeys []string
+	if len(urlKeys) > 0 {
+		effectiveURLKeys = urlKeys[0]
+	}
+	if effectiveURLKeys == nil {
+		effectiveURLKeys = DefaultURLKeys
+	}
+
+	normalizedURLKeys := normalizedJSONKeys(effectiveURLKeys)
+	prefix := rawURL[:queryStart+1]
+	queryAndFragment := rawURL[queryStart+1:]
+	fragment := ""
+	if fragmentStart := strings.Index(queryAndFragment, "#"); fragmentStart >= 0 {
+		fragment = queryAndFragment[fragmentStart:]
+		queryAndFragment = queryAndFragment[:fragmentStart]
+	}
+
+	if queryAndFragment == "" {
+		return rawURL
+	}
+
+	pairs := strings.Split(queryAndFragment, "&")
+	for i, pair := range pairs {
+		if pair == "" {
+			continue
+		}
+
+		key, value, hasValue := strings.Cut(pair, "=")
+		decodedKey, err := url.QueryUnescape(key)
+		if err != nil {
+			decodedKey = key
+		}
+		if !isSensitiveKey(decodedKey, normalizedURLKeys) {
+			continue
+		}
+
+		if hasValue {
+			pairs[i] = key + "=" + MaskSecret(value)
+		}
+	}
+
+	return prefix + strings.Join(pairs, "&") + fragment
+}
+
+func RedactJSON(v any, jsonKeys ...[]string) (any, error) {
+	rawData, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+
+	var normalized any
+	if err := json.Unmarshal(rawData, &normalized); err != nil {
+		return nil, err
+	}
+
+	var effectiveJSONKeys []string
+	if len(jsonKeys) > 0 {
+		effectiveJSONKeys = jsonKeys[0]
+	}
+	if effectiveJSONKeys == nil {
+		effectiveJSONKeys = DefaultJSONKeys
+	}
+
+	return redactJSONValue(normalized, normalizedJSONKeys(effectiveJSONKeys)), nil
+}
+
+func redactJSONValue(value any, normalizedKeys map[string]struct{}) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		redacted := make(map[string]any, len(typed))
+		for key, item := range typed {
+			if isSensitiveKey(key, normalizedKeys) {
+				redacted[key] = redactValue(item, normalizedKeys)
+				continue
+			}
+			redacted[key] = redactJSONValue(item, normalizedKeys)
+		}
+		return redacted
+	case []any:
+		redacted := make([]any, len(typed))
+		for i, item := range typed {
+			redacted[i] = redactJSONValue(item, normalizedKeys)
+		}
+		return redacted
+	default:
+		return value
+	}
+}
+
+func normalizedJSONKeys(jsonKeys []string) map[string]struct{} {
+	normalized := make(map[string]struct{}, len(jsonKeys))
+	for _, key := range jsonKeys {
+		normalized[normalizeKey(key)] = struct{}{}
+	}
+	return normalized
+}
+
+func normalizeKey(key string) string {
+	var builder strings.Builder
+	builder.Grow(len(key))
+	for _, ch := range key {
+		switch {
+		case ch >= 'a' && ch <= 'z':
+			builder.WriteRune(ch)
+		case ch >= 'A' && ch <= 'Z':
+			builder.WriteRune(ch + ('a' - 'A'))
+		case ch >= '0' && ch <= '9':
+			builder.WriteRune(ch)
+		}
+	}
+	return builder.String()
+}
+
+func isSensitiveKey(key string, normalizedKeys map[string]struct{}) bool {
+	normalized := normalizeKey(key)
+	_, ok := normalizedKeys[normalized]
+	return ok
+}
+
+func redactValue(value any, normalizedKeys map[string]struct{}) any {
+	switch typed := value.(type) {
+	case nil:
+		return nil
+	case string:
+		return MaskSecret(typed)
+	case []any:
+		return MaskSecret(mustJSON(typed))
+	case map[string]any:
+		return MaskSecret(mustJSON(typed))
+	default:
+		return MaskSecret(fmt.Sprint(value))
+	}
+}
+
+func mustJSON(value any) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Sprint(value)
+	}
+	return string(data)
+}

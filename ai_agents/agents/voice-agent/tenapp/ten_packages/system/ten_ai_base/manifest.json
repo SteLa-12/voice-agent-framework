@@ -1,0 +1,24 @@
+{
+  "type": "system",
+  "name": "ten_ai_base",
+  "version": "0.7.62",
+  "package": {
+    "include": [
+      "manifest.json",
+      "interface/**",
+      "api/**",
+      "requirements.txt",
+      "pyproject.toml",
+      "go.mod",
+      "pkg/**"
+    ]
+  },
+  "dependencies": [
+    {
+      "type": "system",
+      "name": "ten_runtime_python",
+      "version": "0.11"
+    }
+  ],
+  "api": {}
+}
