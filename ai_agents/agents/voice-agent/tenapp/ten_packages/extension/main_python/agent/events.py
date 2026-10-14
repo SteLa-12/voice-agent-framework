@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal, Union, Dict, Any
+from typing import Literal, Union, Dict, Any, override
 from ten_ai_base.types import LLMToolMetadata
 
 
@@ -9,8 +9,8 @@ from ten_ai_base.types import LLMToolMetadata
 class AgentEventBase(BaseModel):
     """Base class for all agent-level events."""
 
-    type: Literal["cmd", "data"]
-    name: str
+    type: Any
+    name: Any
 
 
 # ==== CMD Events ====
@@ -38,6 +38,18 @@ class ToolRegisterEvent(AgentEventBase):
     tool: LLMToolMetadata
     source: str
 
+class EndOfTurnEvent(AgentEventBase):
+    """Event triggered when the end of the sentence is detected."""
+
+    type: Literal["cmd"] = "cmd"
+    name: Literal["end_of_turn"] = "end_of_turn"
+    text: str
+
+class InterruptEvent(AgentEventBase):
+    """Event triggered whenever the turn of the robot is being interrupted."""
+
+    type: Literal["cmd"] = "cmd"
+    name: Literal["interrupt"] = "interrupt"
 
 # ==== DATA Events ====
 
@@ -70,4 +82,6 @@ AgentEvent = Union[
     ToolRegisterEvent,
     ASRResultEvent,
     LLMResponseEvent,
+    EndOfTurnEvent,
+    InterruptEvent,
 ]

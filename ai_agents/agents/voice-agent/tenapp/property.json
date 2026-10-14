@@ -103,13 +103,14 @@
             {
               "type": "extension",
               "name": "Jev",
-              "addon": "typesafe_jev_python",
+              "addon": "jev_vad_python",
               "property": {
                 "params": {
-                  "model": "jev-1.13.0",
-                  "api_key": "${env:TYPESAFE_API_KEY|apikey_255b64efc8938b341b4b3d72e60f10586fd_5700a34169a01e4f58e59d50c6bddfd77d8b9c6dbee478bc269ae283d98fe550}",
-                  "base_url": "https://api.typesafe.ai",
-                  "timeout_ms": 1000
+                  "end_of_turn_threshold": 0.7,
+                  "api_key": "${env:TYPESAFE_API_KEY|}",
+                  "backchannel_detection_threshold": 0.7,
+                  "interruption_threshold": 0.7,
+                  "backchannel_reproduction_threshold": 0.7
                 }
               }
             }
@@ -206,6 +207,22 @@
                   "dest": [
                     {
                       "extension": "stt"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "extension": "stt",
+              "data": [
+                {
+                  "names": [
+                    "asr_result",
+                    "asr_finalize_end"
+                  ],
+                  "dest": [
+                    {
+                      "extension": "Jev"
                     }
                   ]
                 }

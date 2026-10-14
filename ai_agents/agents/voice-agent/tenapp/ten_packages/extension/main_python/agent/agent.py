@@ -124,6 +124,8 @@ class Agent:
                         tool=tool, source=cmd.get_source().extension_name
                     )
                 )
+            elif name == "interrupt":
+                await self._emit_direct(InterruptEvent())
             else:
                 self.ten_env.log_warn(f"Unhandled cmd: {name}")
 
@@ -146,6 +148,14 @@ class Agent:
                         text=asr.get("text", ""),
                         final=asr.get("final", False),
                         metadata=asr.get("metadata", {}),
+                    )
+                )
+            if data.get_name() == "end_of_turn":
+                data_json, _ = data.get_property_to_json(None)
+                data_obj = json.loads(data_json)
+                await self._emit_direct(
+                    EndOfTurnEvent(
+                        text=data_obj.get("text", ""),
                     )
                 )
             elif data.get_name() in ("tts_audio_start", "tts_audio_end"):

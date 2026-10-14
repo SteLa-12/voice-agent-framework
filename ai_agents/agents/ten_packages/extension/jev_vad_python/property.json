@@ -1,1 +1,9 @@
-{}
+{
+    "params": {
+        "api_key": "${env:TYPESAFE_API_KEY|}",
+        "end_of_turn_threshold": 0.7,
+        "backchannel_detection_threshold": 0.7,
+        "interruption_threshold": 0.7,
+        "backchannel_reproduction_threshold": 0.7
+    }
+}

@@ -259,6 +259,19 @@
       "path": "../../ten_packages/extension/deepgram_tts"
     },
     {
+      "type": "extension",
+      "name": "jev_vad_python",
+      "version": "0.11.73",
+      "hash": "6b06d93a64ba1e70a1650db03a2143e8e4d53bfbdccc7cba2873dc7a3d6d42e9",
+      "dependencies": [
+        {
+          "type": "system",
+          "name": "ten_runtime_python"
+        }
+      ],
+      "path": "../../ten_packages/extension/jev_vad_python"
+    },
+    {
       "type": "system",
       "name": "ten_runtime_python",
       "version": "0.11.73",

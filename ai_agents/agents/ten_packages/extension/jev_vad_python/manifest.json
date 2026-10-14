@@ -5,38 +5,14 @@
   "display_name": {
     "locales": {
       "en-US": {
-        "content": "Default Async Python Extension"
-      },
-      "zh-CN": {
-        "content": "默认异步 Python 扩展"
-      },
-      "zh-TW": {
-        "content": "預設非同步 Python 擴充"
-      },
-      "ja-JP": {
-        "content": "デフォルト非同期 Python 拡張"
-      },
-      "ko-KR": {
-        "content": "기본 비동기 Python 확장"
+        "content": "JEV VAD Python Extension"
       }
     }
   },
   "description": {
     "locales": {
       "en-US": {
-        "content": "Default TEN Framework asynchronous extension template written in Python"
-      },
-      "zh-CN": {
-        "content": "使用 Python 语言编写的默认 TEN Framework 异步扩展模板"
-      },
-      "zh-TW": {
-        "content": "使用 Python 語言編寫的預設 TEN Framework 非同步擴充模板"
-      },
-      "ja-JP": {
-        "content": "Pythonで書かれたデフォルトのTEN Framework非同期拡張テンプレート"
-      },
-      "ko-KR": {
-        "content": "Python으로 작성된 기본 TEN Framework 비동기 확장 템플릿"
+        "content": "Extension controlling the voice activity and sending commands for interruptions by agent."
       }
     }
   },
@@ -44,24 +20,14 @@
     "locales": {
       "en-US": {
         "import_uri": "docs/README.en-US.md"
-      },
-      "zh-CN": {
-        "import_uri": "docs/README.zh-CN.md"
-      },
-      "zh-TW": {
-        "import_uri": "docs/README.zh-TW.md"
-      },
-      "ja-JP": {
-        "import_uri": "docs/README.ja-JP.md"
-      },
-      "ko-KR": {
-        "import_uri": "docs/README.ko-KR.md"
       }
     }
   },
   "tags": [
     "python",
-    "template"
+    "voice_activity_detection",
+    "agent_interruption",
+    "backchannels"
   ],
   "dependencies": [
     {
@@ -83,7 +49,129 @@
       ".vscode/**"
     ]
   },
-  "api": {},
+  "api": {
+    "property": {
+      "properties": {
+        "params": {
+          "type": "object",
+          "properties": {
+            "api_key": {
+              "type": "string"
+            },
+            "end_of_turn_threshold": {
+              "type": "float32"
+            },
+            "backchannel_detection_threshold": {
+              "type": "float32"
+            },
+            "interruption_threshold": {
+              "type": "float32"
+            },
+            "backchannel_reproduction_threshold": {
+              "type": "float32"
+            }
+          }
+        }
+      }
+    },
+    "data_in": [
+      {
+        "name": "asr_result",
+        "property": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "final": {
+              "type": "bool"
+            },
+            "start_ms": {
+              "type": "int64"
+            },
+            "duration_ms": {
+              "type": "int64"
+            },
+            "language": {
+              "type": "string"
+            },
+            "words": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "word": {
+                    "type": "string"
+                  },
+                  "start_ms": {
+                    "type": "int64"
+                  },
+                  "duration_ms": {
+                    "type": "int64"
+                  },
+                  "stable": {
+                    "type": "bool"
+                  }
+                }
+              }
+            },
+            "metadata": {
+              "type": "object",
+              "properties": {
+                "session_id": {
+                  "type": "string"
+                },
+                "asr_info": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "final",
+          "start_ms",
+          "duration_ms",
+          "language"
+        ]
+      },
+      {
+        "name": "asr_finalize_end",
+        "property": {
+          "properties": {
+            "finalize_id": {
+              "type": "string"
+            },
+            "metadata": {
+              "type": "object",
+              "properties": {
+                "session_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    ],
+    "data_out": [
+      {
+        "name": "end_of_turn",
+        "property": {
+          "properties": {
+            "end_of_turn": {
+              "type": "bool"
+            }
+          }
+        }
+      }
+    ]
+  },
   "scripts": {
     "test": "tests/bin/start"
   }

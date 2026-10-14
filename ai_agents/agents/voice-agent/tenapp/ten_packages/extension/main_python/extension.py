@@ -14,10 +14,12 @@ from ten_runtime import (
 from .agent.agent import Agent
 from .agent.events import (
     ASRResultEvent,
+    InterruptEvent,
     LLMResponseEvent,
     ToolRegisterEvent,
     UserJoinedEvent,
     UserLeftEvent,
+    EndOfTurnEvent
 )
 from .helper import _send_cmd, _send_data, parse_sentences
 from .config import MainControlConfig  # assume extracted from your base model
@@ -88,10 +90,24 @@ class MainControlExtension(AsyncExtension):
             return
         if event.final or len(event.text) > 2:
             await self._interrupt()
-        if event.final:
-            self.turn_id += 1
-            await self.agent.queue_llm_input(event.text)
+
+        # Removed this to make sure only jev vad is being used for end-of-turn prediction
+        # if event.final:
+        #     self.turn_id += 1
+        #     await self.agent.queue_llm_input(event.text)
         await self._send_transcript("user", event.text, event.final, stream_id)
+
+    @agent_event_handler(EndOfTurnEvent)
+    async def _on_end_of_turn(self, event: EndOfTurnEvent):
+        self.turn_id += 1
+        await self.agent.queue_llm_input(event.text)
+        # TODO: is this part correct..., is self.turn_id the correct value for the stream_id
+        await self._send_transcript("user", event.text, True, int(self.session_id))
+
+    @agent_event_handler(InterruptEvent)
+    async def _on_interrupt(self, event: InterruptEvent):
+        await self._interrupt()
+
 
     @agent_event_handler(LLMResponseEvent)
     async def _on_llm_response(self, event: LLMResponseEvent):
