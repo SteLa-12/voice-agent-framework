@@ -52,111 +52,76 @@
   "api": {
     "property": {
       "properties": {
-        "params": {
-          "type": "object",
-          "properties": {
-            "api_key": {
-              "type": "string"
-            },
-            "end_of_turn_threshold": {
-              "type": "float32"
-            },
-            "backchannel_detection_threshold": {
-              "type": "float32"
-            },
-            "interruption_threshold": {
-              "type": "float32"
-            },
-            "backchannel_reproduction_threshold": {
-              "type": "float32"
-            }
-          }
+        "api_key": {
+          "type": "string"
+        },
+        "end_of_turn_threshold": {
+          "type": "float32"
+        },
+        "backchannel_detection_threshold": {
+          "type": "float32"
+        },
+        "interruption_detection_threshold": {
+          "type": "float32"
+        },
+        "interruption_reproduction_threshold": {
+          "type": "float32"
+        },
+        "backchannel_reproduction_threshold": {
+          "type": "float32"
+        },
+        "fallback_end_of_turn_ms": {
+          "type": "int64"
+        },
+        "backchannel_cooldown_ms": {
+          "type": "int64"
+        },
+        "backchannel_max_silence_ms": {
+          "type": "int64"
+        },
+        "agent_interrupt_cooldown_ms": {
+          "type": "int64"
+        },
+        "min_words_for_agent_interrupt": {
+          "type": "int64"
+        },
+        "backchannel_asset_dir": {
+          "type": "string"
+        },
+        "backchannel_sample_rate": {
+          "type": "int64"
+        },
+        "audio_dest_frame_ms": {
+          "type": "int64"
+        },
+        "jev_timeout_ms": {
+          "type": "int64"
         }
       }
     },
     "data_in": [
       {
-        "name": "asr_result",
-        "property": {
-          "properties": {
-            "id": {
-              "type": "string"
-            },
-            "text": {
-              "type": "string"
-            },
-            "final": {
-              "type": "bool"
-            },
-            "start_ms": {
-              "type": "int64"
-            },
-            "duration_ms": {
-              "type": "int64"
-            },
-            "language": {
-              "type": "string"
-            },
-            "words": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "word": {
-                    "type": "string"
-                  },
-                  "start_ms": {
-                    "type": "int64"
-                  },
-                  "duration_ms": {
-                    "type": "int64"
-                  },
-                  "stable": {
-                    "type": "bool"
-                  }
-                }
-              }
-            },
-            "metadata": {
-              "type": "object",
-              "properties": {
-                "session_id": {
-                  "type": "string"
-                },
-                "asr_info": {
-                  "type": "object",
-                  "properties": {}
-                }
-              }
-            }
-          }
-        },
-        "required": [
-          "id",
-          "text",
-          "final",
-          "start_ms",
-          "duration_ms",
-          "language"
-        ]
+        "name": "asr_result"
       },
       {
-        "name": "asr_finalize_end",
-        "property": {
-          "properties": {
-            "finalize_id": {
-              "type": "string"
-            },
-            "metadata": {
-              "type": "object",
-              "properties": {
-                "session_id": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
+        "name": "asr_finalize_end"
+      },
+      {
+        "name": "agent_text"
+      },
+      {
+        "name": "tts_audio_start"
+      },
+      {
+        "name": "tts_audio_end"
+      }
+    ],
+    "cmd_in": [
+      {
+        "name": "start_of_sentence"
+      },
+      {
+        "name": "end_of_sentence"
       }
     ],
     "data_out": [
@@ -166,6 +131,28 @@
           "properties": {
             "text": {
               "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "confidence": {
+              "type": "float32"
+            }
+          }
+        }
+      },
+      {
+        "name": "agent_interrupt",
+        "property": {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "confidence": {
+              "type": "float32"
             }
           }
         }
@@ -174,6 +161,38 @@
     "cmd_out": [
       {
         "name": "interrupt"
+      }
+    ],
+    "audio_out": [
+      {
+        "name": "pcm_frame",
+        "property": {
+          "properties": {
+            "channel": {
+              "type": "string"
+            },
+            "stream_id": {
+              "type": "uint32"
+            },
+            "source": {
+              "type": "string"
+            },
+            "remote_user_id": {
+              "type": "string"
+            },
+            "metadata": {
+              "type": "object",
+              "properties": {
+                "session_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "session_id"
+              ]
+            }
+          }
+        }
       }
     ]
   },

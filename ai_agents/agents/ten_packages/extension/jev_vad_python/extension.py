@@ -21,7 +21,7 @@ from ten_ai_base.const import LOG_CATEGORY_KEY_POINT
 
 from .jev_client import JevClient
 from .config import JevVadConfig
-from .models import EndOfTurnResult
+from .models import EndOfTurnPayload
 
 
 class JevVadExtension(AsyncExtension):
@@ -39,9 +39,17 @@ class JevVadExtension(AsyncExtension):
 
         assert self.config is not None
 
-        print("API key set in environment:", os.environ.get("TYPESAFE_API_KEY"))
-        print("JevVadExtension initialized with config:", self.config)
-        self.jev_client = JevClient(self.config.api_key, ten_env)
+        typesafe_api_key: str | None = self.config.api_key
+        if typesafe_api_key == "":
+            if os.getenv("TYPESAFE_API_KEY") is not None:
+                typesafe_api_key = os.getenv("TYPESAFE_API_KEY")
+            else:
+                ten_env.log_error(
+                    "TYPESAFE API key is not set", category=LOG_CATEGORY_KEY_POINT
+                )
+                return
+
+        self.jev_client = JevClient(typesafe_api_key, ten_env) # type: ignore
 
         self.ten_env = ten_env
 
@@ -98,8 +106,10 @@ class JevVadExtension(AsyncExtension):
         if probs.is_end_of_turn(self.config.end_of_turn_threshold):
             self.ten_env.log(LogLevel.INFO, "End of turn detected")
 
-            props = EndOfTurnResult(
+            props = EndOfTurnPayload(
                 text = " ".join(self.transcript_buffer),
+                reason="jev",
+                confidence=probs.end_of_turn,
             )
 
             self.transcript_buffer.clear()
