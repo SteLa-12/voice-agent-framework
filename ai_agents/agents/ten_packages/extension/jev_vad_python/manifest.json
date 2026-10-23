@@ -46,6 +46,7 @@
       "tests/bin/*",
       "requirements.txt",
       "docs/**",
+      "assets/**",
       ".vscode/**"
     ]
   },

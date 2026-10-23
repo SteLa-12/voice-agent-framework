@@ -4,6 +4,7 @@
 # See the LICENSE file for more information.
 #
 import os
+from pathlib import Path
 
 from ten_runtime import (
     AudioFrame,
@@ -19,6 +20,7 @@ from ten_runtime import (
 
 from ten_ai_base.const import LOG_CATEGORY_KEY_POINT
 
+from .backchannel_player import BackchannelPlayer
 from .jev_client import JevClient, QUESTIONS
 from .config import JevVadConfig
 from .models import EndOfTurnPayload
@@ -56,16 +58,20 @@ class JevVadExtension(AsyncExtension):
 
         self.ten_env = ten_env
         self.conversation_state = ConversationState()
+        asset_dir = Path(self.config.backchannel_asset_dir)
+        if not asset_dir.is_absolute():
+            asset_dir = Path(__file__).parent / asset_dir
+        self.backchannel_player = BackchannelPlayer(
+            self.config
+        )
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log(LogLevel.DEBUG, "on_start")
-
-        # IMPLEMENT: read properties, initialize resources
+        self.backchannel_player.load()
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log(LogLevel.DEBUG, "on_stop")
-
-        # IMPLEMENT: clean up resources
+        self.backchannel_player.stop()
 
     async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log(LogLevel.DEBUG, "on_deinit")
@@ -153,6 +159,7 @@ class JevVadExtension(AsyncExtension):
             self.ten_env.log(LogLevel.INFO, "Interrupt reproduction detected")
         if probs.is_backchannel_reproduction(self.config.backchannel_reproduction_threshold):
             self.ten_env.log(LogLevel.INFO, "Backchannel reproduction detected")
+            self.backchannel_player.play(self.ten_env)
 
     async def on_audio_frame(
         self, ten_env: AsyncTenEnv, audio_frame: AudioFrame
