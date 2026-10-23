@@ -3,8 +3,11 @@
 # Licensed under the Apache License, Version 2.0.
 # See the LICENSE file for more information.
 #
+import asyncio
 import os
 from pathlib import Path
+from time import monotonic
+from typing import Type
 
 from ten_runtime import (
     AudioFrame,
@@ -22,15 +25,18 @@ from ten_ai_base.const import LOG_CATEGORY_KEY_POINT
 
 from .backchannel_player import BackchannelPlayer
 from .jev_client import JevClient, QUESTIONS
+from .policy import select_question, decide
 from .config import JevVadConfig
-from .models import EndOfTurnPayload
+from .models import EmitAgentInterrupt, EmitEndOfTurn, EmitUserInterrupt, EndOfTurnPayload, Action, IgnoreUserBackchannel, PlayBackchannel
 from .state import ConversationSnapshot, ConversationState
+from .helper import _send_cmd, _send_data
 
 
 class JevVadExtension(AsyncExtension):
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log(LogLevel.DEBUG, "on_init")
 
+        # Loading the config file
         config_json, _ = await ten_env.get_property_to_json()
         try:
             self.config = JevVadConfig.model_validate_json(config_json)
@@ -40,8 +46,10 @@ class JevVadExtension(AsyncExtension):
             )
             self.config = None
 
+        # Assert that config file is correctly loaded
         assert self.config is not None
 
+        # Fallback options for when api_key is not correctly loaded
         typesafe_api_key: str | None = self.config.api_key
         if typesafe_api_key == "":
             env_api_key = os.getenv("TYPESAFE_API_KEY")
@@ -52,26 +60,42 @@ class JevVadExtension(AsyncExtension):
                 return
             typesafe_api_key = env_api_key
 
+        # Create the Jev Client for Jev decisions
         self.jev_client = JevClient(
             typesafe_api_key, ten_env, self.config.jev_timeout_ms
         )  # type: ignore
 
         self.ten_env = ten_env
+
+        # Initiate the empty state
         self.conversation_state = ConversationState()
-        asset_dir = Path(self.config.backchannel_asset_dir)
-        if not asset_dir.is_absolute():
-            asset_dir = Path(__file__).parent / asset_dir
-        self.backchannel_player = BackchannelPlayer(
-            self.config
-        )
+
+        # Initiate backchannel playback module
+        self.backchannel_player = BackchannelPlayer(self.config)
+
+        # Event for evaluation request
+        self._evaluation_event = asyncio.Event()
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log(LogLevel.DEBUG, "on_start")
+
+        # Load the required backchannel audio files
         self.backchannel_player.load()
+
+        # Startup evaluation task for Jev predictions
+        self._evaluation_worker_task = asyncio.create_task(self._evaluation_worker())
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log(LogLevel.DEBUG, "on_stop")
+
+        # Stop the backchannel player
         self.backchannel_player.stop()
+
+        # Cancel the evaluation worker running task
+        if self._evaluation_worker_task is not None:
+            self._evaluation_worker_task.cancel()
+
+        # TODO: Stop the fallback timer
 
     async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log(LogLevel.DEBUG, "on_deinit")
@@ -80,8 +104,19 @@ class JevVadExtension(AsyncExtension):
         cmd_name = cmd.get_name()
         ten_env.log(LogLevel.DEBUG, "on_cmd name {}".format(cmd_name))
 
-        # IMPLEMENT: process cmd
+        if cmd_name == "start_of_sentence":
+            self.conversation_state.on_vad_start()
 
+            # TODO: cancel the fallback timer
+
+        elif cmd_name == "end_of_sentence":
+            self.conversation_state.on_vad_end()
+
+            await self._arm_fallback_timer()
+
+            await self._request_evaluation()
+
+        # Return success message
         cmd_result = CmdResult.create(StatusCode.OK, cmd)
         await ten_env.return_result(cmd_result)
 
@@ -89,7 +124,10 @@ class JevVadExtension(AsyncExtension):
         data_name = data.get_name()
         ten_env.log(LogLevel.DEBUG, "on_data name {}".format(data_name))
 
+        # Depending on the data name, route differently
         if data_name == "asr_result":
+
+            # Retrieve transcript from the data package
             asr_result, err = data.get_property_string("text")
             if err is not None:
                 ten_env.log_error(f"Failed to read 'text' from asr_result: {err}")
@@ -99,9 +137,43 @@ class JevVadExtension(AsyncExtension):
                 ten_env.log_error(f"Failed to read 'final' from asr_result: {err}")
                 return
             self.ten_env.log(LogLevel.DEBUG, f"Received ASR result: {asr_result}")
+
+            # Add new transcript to the state
             self.conversation_state.on_asr(asr_result, final)
-            snapshot = self.conversation_state.snapshot()
-            await self._handle_decision_call(snapshot)
+
+            await self._request_evaluation()
+
+        elif data_name == "asr_finalize_end":
+
+            self.ten_env.log_debug(f"Retrieved message with name: {data_name}")
+
+        elif data_name == "agent_text":
+
+            # Retrieve text from the data package
+            text, err = data.get_property_string("text")
+            if err is not None:
+                ten_env.log_error(f"Failed to read 'text' from agent_text: {err}")
+                return
+            request_id, err = data.get_property_string("request_id")
+            if err is not None:
+                ten_env.log_error(f"Failed to read 'request_id' from agent_text: {err}")
+                return
+            self.ten_env.log(LogLevel.DEBUG, f"Received agent text: {text}")
+
+            self.conversation_state.on_agent_text(request_id, text)
+
+        elif data_name == "tts_audio_start":
+
+            # Set state accordingly
+            self.conversation_state.on_tts_audio_start()
+
+            # Stop playing any backchannel (to prevent backchannels during robot speech)
+            self.backchannel_player.stop()
+
+        elif data_name == "tts_audio_end":
+
+            # Set state accordingly
+            self.conversation_state.on_tts_audio_end()
 
     async def _handle_decision_call(self, snapshot: ConversationSnapshot) -> None:
         """Callback for decision making and correct system handling (based on prediction)"""
@@ -176,3 +248,124 @@ class JevVadExtension(AsyncExtension):
         ten_env.log(LogLevel.DEBUG, "on_video_frame name {}".format(video_frame_name))
 
         # IMPLEMENT: process video frame
+
+    async def _evaluation_worker(self) -> None:
+        """Evaluation worker loop, iterates over the evaluation process."""
+        try:
+            while True:
+                # Wait as long as the evaluation event flag is not being set
+                while not self._evaluation_event.is_set():
+                    await asyncio.sleep(0.2)
+
+                # Reset the evaluation flag
+                self._evaluation_event.clear()
+
+                # Take a snapshot of the current state
+                snapshot = self.conversation_state.snapshot()
+
+                # Select the questions that should be asked to Jev based on the current state
+                assert self.config is not None
+                questions = select_question(snapshot, self.config)
+
+                # If no questions do conform to the current state, the loop is continued
+                if questions is None:
+                    continue
+
+                turn_epoch_before_call = self.conversation_state.turn_epoch
+
+                # Request a prediction from Jev
+                prediction = await self.jev_client.get_prediction(snapshot, questions)
+
+                # If the turn has switched during evaluation (e.g. during time-out or vad end of turn), the prediction is skipped, because it is no longer relevant
+                if self.conversation_state.turn_epoch != self.conversation_state.turn_epoch:
+                    continue
+
+                # TODO: Is this usefull? It also drops it if the floor changed between `AGENT` and the user states.
+
+                if prediction is None:
+                    continue
+
+                # Decide upon an action based on this prediction
+                action = decide(prediction, snapshot, self.config)
+
+                await self._execute(action)
+
+        except asyncio.exceptions.CancelledError:
+            self.ten_env.log_debug("Evaluation worker is being cancelled.")
+            return
+
+        except ValueError as e:
+            self.ten_env.log_error(f"An error occurred during evaluation: {e}")
+
+
+    async def _request_evaluation(self) -> None:
+        """Sends event to evaluation worker loop to start an evaluation."""
+        self._evaluation_event.set()
+
+    async def _arm_fallback_timer(self) -> None:
+        ...
+
+    async def _execute(self, action: Action, *args) -> None:
+        """Executes the right calls depending on the action that is being given as input.
+
+        Args:
+            action (Type[Action]): The action that should be performed.
+        """
+
+        if type(action) is EmitEndOfTurn:
+
+            # Send end_of_turn data
+            await _send_data(
+                self.ten_env,
+                data_name="end_of_turn",
+                payload=action.payload
+            )
+
+            # Flush the end of user turn
+            self.conversation_state.flush_user_turn()
+
+            # Robot put back to listening state
+            self.conversation_state.agent_speaking = False
+            self.conversation_state.agent_pending = True
+
+            # TODO: Cancel the playback timer
+
+            self.backchannel_player.stop()
+
+        elif type(action) is EmitUserInterrupt:
+
+            # Send interrupt cmd command
+            await _send_cmd(
+                self.ten_env,
+                cmd_name="interrupt",
+                payload=action.payload
+            )
+
+            self.conversation_state.agent_speaking = False
+
+        elif type(action) is IgnoreUserBackchannel:
+
+            # Removes backchannel from current input buffer
+            self.conversation_state.flush_user_turn()
+
+        elif type(action) is PlayBackchannel:
+
+            # Play the backchannel audio
+            self.backchannel_player.play(self.ten_env)
+
+            self.conversation_state.on_agent_backchannel()
+
+        elif type(action) is EmitAgentInterrupt:
+
+            # Send agent interrupt
+            await _send_data(
+                self.ten_env,
+                data_name="agent_interrupt",
+                payload=action.payload
+            )
+
+            self.conversation_state.flush_user_turn()
+
+            self.conversation_state.agent_pending = True
+
+            self.conversation_state.on_agent_interrupt()

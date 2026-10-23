@@ -35,6 +35,7 @@ class ConversationState:
         self.last_agent_request_id: str | None = None
         self.last_agent_utterance = ""
         self.last_backchannel_ts: float | None = None
+        self.last_agent_interrupt_ts: float | None = None
 
     def on_asr(self, text: str, final: bool) -> None:
         """Updates the current asr input buffer, by replacing the buffer with the new input.
@@ -113,8 +114,11 @@ class ConversationState:
             return 0.0
         return max(0.0, (monotonic() - self.last_user_speech_end_ts) * 1000)
 
-    def on_backchannel(self) -> None:
+    def on_agent_backchannel(self) -> None:
         self.last_backchannel_ts = monotonic()
+
+    def on_agent_interrupt(self) -> None:
+        self.last_agent_interrupt_ts = monotonic()
 
     def snapshot(self) -> ConversationSnapshot:
         """Creates a snapshot of the current conversation state."""

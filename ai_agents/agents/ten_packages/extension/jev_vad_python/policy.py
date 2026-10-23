@@ -2,13 +2,13 @@ from time import monotonic
 from typing import Optional, Type
 
 from .state import ConversationSnapshot, FloorState
-from .models import Action, EmitAgentInterrupt, EmitEndOfTurn, EmitUserInterrupt, IgnoreUserBackchannel, NoOp, PlayBackchannel
+from .models import Action, AgentInterruptPayload, EmitAgentInterrupt, EmitEndOfTurn, EmitUserInterrupt, EndOfTurnPayload, IgnoreUserBackchannel, InterruptPayload, NoOp, PlayBackchannel
 from .config import JevVadConfig
 from .jev_client import JevPrediction
 
 def select_question(
         snapshot: ConversationSnapshot,
-        backchannel_cooldown_ms: int
+        config: JevVadConfig
     ) -> Optional[set[str]]:
     """Selects the questions that should be asked to the Jev model API in the current state snapshot
 
@@ -23,7 +23,7 @@ def select_question(
     if snapshot.floor in [FloorState.AGENT, FloorState.OVERLAP]:
         return {"interrupt_detection", "backchannel_detection"}
     elif snapshot.floor in [FloorState.USER, FloorState.IDLE]:
-        if snapshot.user_transcript != "" and snapshot.last_backchannel_ts is not None and (monotonic() - snapshot.last_backchannel_ts) * 1000 < backchannel_cooldown_ms:
+        if snapshot.user_transcript != "" and snapshot.last_backchannel_ts is not None and (monotonic() - snapshot.last_backchannel_ts) * 1000 < config.backchannel_cooldown_ms:
             return {"end_of_turn", "interrupt_reproduction"}
         return {"end_of_turn", "interrupt_reproduction"}
     return None
@@ -32,7 +32,7 @@ def decide(
         prediction: JevPrediction,
         snapshot: ConversationSnapshot,
         config: JevVadConfig
-    ) -> Type[Action]:
+    ) -> Action:
     """Returns the exact type of :class:`Action` that needs to be taken, taking into account the current state and the prediction made by Jev.
 
     Args:
@@ -46,18 +46,36 @@ def decide(
 
     if snapshot.agent_speaking:
         if prediction.is_backchannel_detection(config.backchannel_detection_threshold):
-            return IgnoreUserBackchannel
-        elif prediction.is_interrupt_detection(config.interruption_detection_threshold):
-            return EmitUserInterrupt
+            return IgnoreUserBackchannel()
+        elif prediction.is_interrupt_detection(config.interruption_detection_threshold) and prediction.interrupt_detection is not None:
+            return EmitUserInterrupt(
+                payload=InterruptPayload(
+                    text=snapshot.current_interim,
+                    confidence=prediction.interrupt_detection,
+                )
+            )
     elif snapshot.user_speaking:
-        if prediction.is_end_of_turn(config.end_of_turn_threshold):
-            return EmitEndOfTurn
+        if prediction.is_end_of_turn(config.end_of_turn_threshold) and prediction.end_of_turn is not None:
+            return EmitEndOfTurn(
+                payload=EndOfTurnPayload(
+                    text=snapshot.user_transcript,
+                    reason="jev",
+                    confidence=prediction.end_of_turn,
+                )
+            )
         elif (
             prediction.is_interrupt_reproduction(config.interruption_reproduction_threshold) and
-            len(snapshot.current_interim) > config.min_words_for_agent_interrupt
+            len(snapshot.current_interim) > config.min_words_for_agent_interrupt and
+            prediction.interrupt_reproduction is not None
             # TODO: also detect the cooldown period
         ):
-            return EmitAgentInterrupt
+            return EmitAgentInterrupt(
+                payload=AgentInterruptPayload(
+                    text=snapshot.current_interim,
+                    reason="jev",
+                    confidence=prediction.interrupt_reproduction
+                )
+            )
         elif (
             prediction.is_backchannel_reproduction(config.backchannel_detection_threshold) and
             snapshot.user_silence_ms < config.backchannel_max_silence_ms and
@@ -65,5 +83,5 @@ def decide(
             (snapshot.last_backchannel_ts - monotonic()) * 1000 > config.backchannel_cooldown_ms) or
             snapshot.last_backchannel_ts is None)
         ):
-            return PlayBackchannel
-    return NoOp
+            return PlayBackchannel()
+    return NoOp()
