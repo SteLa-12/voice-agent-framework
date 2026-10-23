@@ -164,11 +164,16 @@
         "name": "end_of_turn",
         "property": {
           "properties": {
-            "end_of_turn": {
-              "type": "bool"
+            "text": {
+              "type": "string"
             }
           }
         }
+      }
+    ],
+    "cmd_out": [
+      {
+        "name": "interrupt"
       }
     ]
   },

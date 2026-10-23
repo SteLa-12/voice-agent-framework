@@ -1,5 +1,9 @@
+import os
+
 from typesafe_sdk import AsyncTypeSafeClient, Noul, NoulCriteria, SystemOneResponse
 from dataclasses import dataclass
+
+from ten_runtime.async_ten_env import AsyncTenEnv
 
 @dataclass
 class JevPrediction:
@@ -44,10 +48,14 @@ class JevPrediction:
         return self.backchannel_reproduction >= thresh
 
 class JevClient:
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, ten_env: AsyncTenEnv):
+        if api_key == "":
+            api_key = os.environ.get("TYPESAFE_API_KEY", "")
         self.client = AsyncTypeSafeClient(api_key=api_key)
+        self.ten_env = ten_env
 
     async def get_prediction(self, utterance: str) -> JevPrediction:
+        self.ten_env.log_debug(f"Getting prediction for utterance: {utterance}")
         response = await self.client.system_one(
             state={
                 "system": """
@@ -140,5 +148,7 @@ class JevClient:
                 )
             }
         )
+
+        self.ten_env.log_debug(f"Received response from Jev API: {response.model_dump_json()}")
 
         return JevPrediction.from_response(response)

@@ -35,9 +35,9 @@ class MainControlExtension(AsyncExtension):
 
     def __init__(self, name: str):
         super().__init__(name)
-        self.ten_env: AsyncTenEnv = None
-        self.agent: Agent = None
-        self.config: MainControlConfig = None
+        self.ten_env: AsyncTenEnv | None = None
+        self.agent: Agent | None = None
+        self.config: MainControlConfig | None = None
 
         self.stopped: bool = False
         self._rtc_user_count: int = 0
@@ -80,16 +80,17 @@ class MainControlExtension(AsyncExtension):
 
     @agent_event_handler(ToolRegisterEvent)
     async def _on_tool_register(self, event: ToolRegisterEvent):
-        await self.agent.register_llm_tool(event.tool, event.source)
+        if self.agent:
+            await self.agent.register_llm_tool(event.tool, event.source)
 
     @agent_event_handler(ASRResultEvent)
     async def _on_asr_result(self, event: ASRResultEvent):
         self.session_id = event.metadata.get("session_id", "100")
         stream_id = int(self.session_id)
-        if not event.text:
+        if not event.text or event.final:
             return
-        if event.final or len(event.text) > 2:
-            await self._interrupt()
+        # if event.final or len(event.text) > 2:
+            # await self._interrupt()
 
         # Removed this to make sure only jev vad is being used for end-of-turn prediction
         # if event.final:
@@ -100,14 +101,14 @@ class MainControlExtension(AsyncExtension):
     @agent_event_handler(EndOfTurnEvent)
     async def _on_end_of_turn(self, event: EndOfTurnEvent):
         self.turn_id += 1
-        await self.agent.queue_llm_input(event.text)
+        if self.agent:
+            await self.agent.queue_llm_input(event.text)
         # TODO: is this part correct..., is self.turn_id the correct value for the stream_id
         await self._send_transcript("user", event.text, True, int(self.session_id))
 
     @agent_event_handler(InterruptEvent)
     async def _on_interrupt(self, event: InterruptEvent):
         await self._interrupt()
-
 
     @agent_event_handler(LLMResponseEvent)
     async def _on_llm_response(self, event: LLMResponseEvent):
@@ -137,13 +138,16 @@ class MainControlExtension(AsyncExtension):
     async def on_stop(self, ten_env: AsyncTenEnv):
         ten_env.log_info("[MainControlExtension] on_stop")
         self.stopped = True
-        await self.agent.stop()
+        if self.agent:
+            await self.agent.stop()
 
     async def on_cmd(self, ten_env: AsyncTenEnv, cmd: Cmd):
-        await self.agent.on_cmd(cmd)
+        if self.agent:
+            await self.agent.on_cmd(cmd)
 
     async def on_data(self, ten_env: AsyncTenEnv, data: Data):
-        await self.agent.on_data(data)
+        if self.agent:
+            await self.agent.on_data(data)
 
     # === helpers ===
     async def _send_transcript(
@@ -157,7 +161,7 @@ class MainControlExtension(AsyncExtension):
         """
         Sends the transcript (ASR or LLM output) to the message collector.
         """
-        if data_type == "text":
+        if data_type == "text" and self.ten_env:
             await _send_data(
                 self.ten_env,
                 "message",
@@ -171,7 +175,7 @@ class MainControlExtension(AsyncExtension):
                     "stream_id": stream_id,
                 },
             )
-        elif data_type == "reasoning":
+        elif data_type == "reasoning" and self.ten_env:
             await _send_data(
                 self.ten_env,
                 "message",
@@ -194,7 +198,7 @@ class MainControlExtension(AsyncExtension):
             )
         self.ten_env.log_info(
             f"[MainControlExtension] Sent transcript: {role}, final={final}, text={text}"
-        )
+        ) if self.ten_env else None
 
     async def _send_to_tts(self, text: str, is_final: bool):
         """
@@ -211,19 +215,20 @@ class MainControlExtension(AsyncExtension):
                 "text_input_end": is_final,
                 "metadata": self._current_metadata(),
             },
-        )
+        ) if self.ten_env else None
         self.ten_env.log_info(
             f"[MainControlExtension] Sent to TTS: is_final={is_final}, text={text}"
-        )
+        ) if self.ten_env else None
 
     async def _interrupt(self):
         """
         Interrupts ongoing LLM and TTS generation. Typically called when user speech is detected.
         """
         self.sentence_fragment = ""
-        await self.agent.flush_llm()
+        if self.agent:
+            await self.agent.flush_llm()
         await _send_data(
             self.ten_env, "tts_flush", "tts", {"flush_id": str(uuid.uuid4())}
-        )
-        await _send_cmd(self.ten_env, "flush", "agora_rtc")
-        self.ten_env.log_info("[MainControlExtension] Interrupt signal sent")
+        ) if self.ten_env else None
+        await _send_cmd(self.ten_env, "flush", "agora_rtc") if self.ten_env else None
+        self.ten_env.log_info("[MainControlExtension] Interrupt signal sent") if self.ten_env else None

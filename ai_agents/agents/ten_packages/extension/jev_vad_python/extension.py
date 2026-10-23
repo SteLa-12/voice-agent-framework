@@ -3,6 +3,8 @@
 # Licensed under the Apache License, Version 2.0.
 # See the LICENSE file for more information.
 #
+import os
+
 from ten_runtime import (
     AudioFrame,
     VideoFrame,
@@ -17,9 +19,9 @@ from ten_runtime import (
 
 from ten_ai_base.const import LOG_CATEGORY_KEY_POINT
 
-from jev_client import JevClient
-from config import JevVadConfig
-from models import EndOfTurnResult
+from .jev_client import JevClient
+from .config import JevVadConfig
+from .models import EndOfTurnResult
 
 
 class JevVadExtension(AsyncExtension):
@@ -36,7 +38,10 @@ class JevVadExtension(AsyncExtension):
             self.config = None
 
         assert self.config is not None
-        self.jev_client = JevClient(self.config.api_key)
+
+        print("API key set in environment:", os.environ.get("TYPESAFE_API_KEY"))
+        print("JevVadExtension initialized with config:", self.config)
+        self.jev_client = JevClient(self.config.api_key, ten_env)
 
         self.ten_env = ten_env
 
@@ -69,23 +74,35 @@ class JevVadExtension(AsyncExtension):
         ten_env.log(LogLevel.DEBUG, "on_data name {}".format(data_name))
 
         if data_name == "asr_result":
-            asr_result = data.get_property_string("text")
+            asr_result, err = data.get_property_string("text")
+            if err is not None:
+                ten_env.log_error(f"Failed to read 'text' from asr_result: {err}")
+                return
+            self.ten_env.log(LogLevel.DEBUG, f"Received ASR result: {asr_result}")
             self.transcript_buffer.append(asr_result)
             await self._handle_decision_call()
 
     async def _handle_decision_call(self) -> None:
         """Callback for decision making and correct system handling (based on prediction)"""
-        probs = await self.jev_client.get_prediction(" ".join(self.transcript_buffer))
-        self.ten_env.log(LogLevel.DEBUG, f"Jev prediction: {probs}")
+
+        if not self.transcript_buffer:
+            self.ten_env.log(LogLevel.DEBUG, "Transcript buffer is empty, skipping decision call")
+            return
+
+        transcription = " ".join(self.transcript_buffer)
+        probs = await self.jev_client.get_prediction(transcription)
+        self.ten_env.log(LogLevel.INFO, f"Jev prediction: {probs}")
 
         assert self.config is not None
 
         if probs.is_end_of_turn(self.config.end_of_turn_threshold):
-            self.ten_env.log(LogLevel.DEBUG, "End of turn detected")
+            self.ten_env.log(LogLevel.INFO, "End of turn detected")
 
             props = EndOfTurnResult(
                 text = " ".join(self.transcript_buffer),
             )
+
+            self.transcript_buffer.clear()
 
             data_obj = Data.create("end_of_turn")
 
@@ -98,18 +115,18 @@ class JevVadExtension(AsyncExtension):
             await self.ten_env.send_data(data_obj)
 
         if probs.is_interrupt_detection(self.config.interruption_detection_threshold):
-            self.ten_env.log(LogLevel.DEBUG, "Interrupt detection detected")
+            self.ten_env.log(LogLevel.INFO, "Interrupt detection detected")
 
             cmd_obj = Cmd.create("interrupt")
 
             await self.ten_env.send_cmd(cmd_obj)
 
         if probs.is_backchannel_detection(self.config.backchannel_detection_threshold):
-            self.ten_env.log(LogLevel.DEBUG, "Backchannel detection detected")
+            self.ten_env.log(LogLevel.INFO, "Backchannel detection detected")
         if probs.is_interrupt_reproduction(self.config.interruption_reproduction_threshold):
-            self.ten_env.log(LogLevel.DEBUG, "Interrupt reproduction detected")
+            self.ten_env.log(LogLevel.INFO, "Interrupt reproduction detected")
         if probs.is_backchannel_reproduction(self.config.backchannel_reproduction_threshold):
-            self.ten_env.log(LogLevel.DEBUG, "Backchannel reproduction detected")
+            self.ten_env.log(LogLevel.INFO, "Backchannel reproduction detected")
 
     async def on_audio_frame(
         self, ten_env: AsyncTenEnv, audio_frame: AudioFrame

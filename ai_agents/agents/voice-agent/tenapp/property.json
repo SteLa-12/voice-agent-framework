@@ -227,6 +227,29 @@
                   ]
                 }
               ]
+            },
+            {
+              "extension": "Jev",
+              "cmd": [
+                {
+                  "name": "interrupt",
+                  "dest": [
+                    {
+                      "extension": "main_control"
+                    }
+                  ]
+                }
+              ],
+              "data": [
+                {
+                  "name": "end_of_turn",
+                  "dest": [
+                    {
+                      "extension": "main_control"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -248,6 +271,23 @@
             "type": "console",
             "config": {
               "stream": "stdout"
+            }
+          }
+        },
+        {
+          "matchers": [
+            {
+              "level": "debug"
+            }
+          ],
+          "formatter": {
+            "type": "plain",
+            "colored": false
+          },
+          "emitter": {
+            "type": "file",
+            "config": {
+              "path": "/app/logs/ten.log"
             }
           }
         }
