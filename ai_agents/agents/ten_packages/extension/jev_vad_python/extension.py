@@ -5,9 +5,7 @@
 #
 import asyncio
 import os
-from pathlib import Path
 from time import monotonic
-from typing import Type
 
 from ten_runtime import (
     AudioFrame,
@@ -76,6 +74,10 @@ class JevVadExtension(AsyncExtension):
         # Event for evaluation request
         self._evaluation_event = asyncio.Event()
 
+        # Starting the fallback timer
+        self._stop_fallback_timer_event = asyncio.Event()
+        self._fallback_timer_worker = asyncio.create_task(self._fallback_timer())
+
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log(LogLevel.DEBUG, "on_start")
 
@@ -95,7 +97,7 @@ class JevVadExtension(AsyncExtension):
         if self._evaluation_worker_task is not None:
             self._evaluation_worker_task.cancel()
 
-        # TODO: Stop the fallback timer
+        self._cancel_fallback_timer()
 
     async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
         ten_env.log(LogLevel.DEBUG, "on_deinit")
@@ -107,12 +109,12 @@ class JevVadExtension(AsyncExtension):
         if cmd_name == "start_of_sentence":
             self.conversation_state.on_vad_start()
 
-            # TODO: cancel the fallback timer
+            await self._stop_fallback_timer()
 
         elif cmd_name == "end_of_sentence":
             self.conversation_state.on_vad_end()
 
-            await self._arm_fallback_timer()
+            await self._reset_fallback_timer()
 
             await self._request_evaluation()
 
@@ -302,8 +304,70 @@ class JevVadExtension(AsyncExtension):
         """Sends event to evaluation worker loop to start an evaluation."""
         self._evaluation_event.set()
 
-    async def _arm_fallback_timer(self) -> None:
-        ...
+    async def _reset_fallback_timer(self) -> None:
+        """Starts a fallback timer loop which triggers after `fallback_end_of_turn_ms` amount of milliseconds to ensure the turn switches even if Jev misses the turn."""
+        # Resetting the stop fallback timer to ensure it starts running again
+        self._stop_fallback_timer_event.clear()
+
+    async def _stop_fallback_timer(self) -> None:
+        """Stops the fallback timer, disabling end of turn firing."""
+        # Set the fallback timer stop event to disable it
+        self._stop_fallback_timer_event.set()
+
+    async def _fallback_timer(self) -> None:
+        """The fallback timer triggers as soon as the end of turn fallback is triggered."""
+
+        self._fallback_timer_starting_point: float | None = None
+
+        try:
+            while True:
+                if self._stop_fallback_timer_event.is_set():
+                    # When the fallback timer event is triggered, start timer
+
+                    if self._fallback_timer_starting_point is None:
+                        self._fallback_timer_starting_point = monotonic()
+
+                    if (self.config is not None and
+                        (monotonic() - self._fallback_timer_starting_point) * 1000 > self.config.fallback_end_of_turn_ms):
+                        # Start end of turn
+
+                        # Retrieve snapshot
+                        snapshot = self.conversation_state.snapshot()
+                        payload = EndOfTurnPayload(
+                            text=snapshot.user_transcript,
+                            reason="fallback",
+                            confidence=1
+                        )
+
+                        # Send end_of_turn data
+                        await _send_data(
+                            self.ten_env,
+                            data_name="end_of_turn",
+                            payload=payload
+                        )
+
+                        # Flush the end of user turn
+                        self.conversation_state.flush_user_turn()
+
+                        # Robot put back to listening state
+                        self.conversation_state.agent_speaking = False
+                        self.conversation_state.agent_pending = True
+
+                        self.backchannel_player.stop()
+
+                        self._stop_fallback_timer_event.clear()
+
+                await asyncio.sleep(0.2)
+
+        except asyncio.exceptions.CancelledError:
+            self.ten_env.log_debug("Stopping fallback timer.")
+            return
+
+
+    def _cancel_fallback_timer(self) -> None:
+        """Cancels the fallback timer and stops the worker."""
+        if self._fallback_timer_worker is not None:
+            self._fallback_timer_worker.cancel()
 
     async def _execute(self, action: Action, *args) -> None:
         """Executes the right calls depending on the action that is being given as input.
@@ -328,7 +392,7 @@ class JevVadExtension(AsyncExtension):
             self.conversation_state.agent_speaking = False
             self.conversation_state.agent_pending = True
 
-            # TODO: Cancel the playback timer
+            self._stop_fallback_timer_event.clear()
 
             self.backchannel_player.stop()
 
