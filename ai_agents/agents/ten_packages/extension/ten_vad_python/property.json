@@ -1,1 +1,4 @@
-{}
+{
+    "silence_duration_ms": 300,
+    "prefix_padding_ms": 120
+}

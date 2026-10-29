@@ -113,6 +113,11 @@
                   "backchannel_reproduction_threshold": 0.7
                 }
               }
+            },
+            {
+              "type": "extension",
+              "name": "vad",
+              "addon": "ten_vad_python"
             }
           ],
           "connections": [
@@ -165,6 +170,14 @@
                       "extension": "tts"
                     }
                   ]
+                },
+                {
+                  "name": "agent_text",
+                  "dest": [
+                    {
+                      "extension": "Jev"
+                    }
+                  ]
                 }
               ]
             },
@@ -207,6 +220,9 @@
                   "dest": [
                     {
                       "extension": "stt"
+                    },
+                    {
+                      "extension": "vad"
                     }
                   ]
                 }
@@ -246,6 +262,56 @@
                   "dest": [
                     {
                       "extension": "main_control"
+                    }
+                  ]
+                },
+                {
+                  "name": "agent_interrupt",
+                  "dest": [
+                    {
+                      "extension": "main_control"
+                    }
+                  ]
+                }
+              ],
+              "audio_frame": [
+                {
+                  "name": "pcm_frame",
+                  "dest": [
+                    {
+                      "extension": "agora_rtc"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "extension": "vad",
+              "cmd": [
+                {
+                  "names": [
+                    "start_of_sentence",
+                    "end_of_sentence"
+                  ],
+                  "dest": [
+                    {
+                      "extension": "Jev"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "extension": "tts",
+              "data": [
+                {
+                  "names": [
+                    "tts_audio_end",
+                    "tts_audio_start"
+                  ],
+                  "dest": [
+                    {
+                      "extension": "Jev"
                     }
                   ]
                 }

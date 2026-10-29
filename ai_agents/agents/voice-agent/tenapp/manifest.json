@@ -59,6 +59,9 @@
     },
     {
       "path": "../../ten_packages/extension/jev_vad_python"
+    },
+    {
+      "path": "../../ten_packages/extension/ten_vad_python"
     }
   ],
   "scripts": {

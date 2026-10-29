@@ -272,6 +272,19 @@
       "path": "../../ten_packages/extension/jev_vad_python"
     },
     {
+      "type": "extension",
+      "name": "ten_vad_python",
+      "version": "0.2.2",
+      "hash": "c09060a217f31b772b5754f949b63146fc0d8a3d8aed5f5ece80a04fdf0ca9f0",
+      "dependencies": [
+        {
+          "type": "system",
+          "name": "ten_runtime_python"
+        }
+      ],
+      "path": "../../ten_packages/extension/ten_vad_python"
+    },
+    {
       "type": "system",
       "name": "ten_runtime_python",
       "version": "0.11.73",

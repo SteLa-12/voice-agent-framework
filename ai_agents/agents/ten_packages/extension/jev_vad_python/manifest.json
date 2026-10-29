@@ -164,7 +164,7 @@
         "name": "interrupt"
       }
     ],
-    "audio_out": [
+    "audio_frame_out": [
       {
         "name": "pcm_frame",
         "property": {
