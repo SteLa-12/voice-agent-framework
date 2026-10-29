@@ -19,22 +19,22 @@ class AgentEventBase(BaseModel):
 class UserJoinedEvent(AgentEventBase):
     """Event triggered when a user joins the session."""
 
-    type: Literal["cmd"] = "cmd"
-    name: Literal["on_user_joined"] = "on_user_joined"
+    type: Literal["cmd", "data"] = "cmd"
+    name: str = "on_user_joined"
 
 
 class UserLeftEvent(AgentEventBase):
     """Event triggered when a user leaves the session."""
 
-    type: Literal["cmd"] = "cmd"
-    name: Literal["on_user_left"] = "on_user_left"
+    type: Literal["cmd", "data"] = "cmd"
+    name: str = "on_user_left"
 
 
 class ToolRegisterEvent(AgentEventBase):
     """Event triggered when a tool is registered by the user."""
 
-    type: Literal["cmd"] = "cmd"
-    name: Literal["tool_register"] = "tool_register"
+    type: Literal["cmd", "data"] = "cmd"
+    name: str = "tool_register"
     tool: LLMToolMetadata
     source: str
 
@@ -45,8 +45,8 @@ class ToolRegisterEvent(AgentEventBase):
 class ASRResultEvent(AgentEventBase):
     """Event triggered when ASR result is received (partial or final)."""
 
-    type: Literal["data"] = "data"
-    name: Literal["asr_result"] = "asr_result"
+    type: Literal["cmd", "data"] = "data"
+    name: str = "asr_result"
     text: str
     final: bool
     metadata: Dict[str, Any]
@@ -56,8 +56,8 @@ class ASRResultEvent(AgentEventBase):
 class ASRCommitTimeoutEvent(AgentEventBase):
     """The speech-final fallback deadline for one ASR session."""
 
-    type: Literal["data"] = "data"
-    name: Literal["asr_commit_timeout"] = "asr_commit_timeout"
+    type: Literal["cmd", "data"] = "data"
+    name: str = "asr_commit_timeout"
     session_id: str
     stream_id: int
     generation: int
@@ -66,8 +66,8 @@ class ASRCommitTimeoutEvent(AgentEventBase):
 class LLMResponseEvent(AgentEventBase):
     """Event triggered when LLM returns a streaming response."""
 
-    type: Literal["message", "reasoning"] = "message"
-    name: Literal["llm_response"] = "llm_response"
+    type: Literal["message", "reasoning"] = "message" # type: ignore
+    name: str = "llm_response"
     delta: str
     text: str
     is_final: bool
@@ -76,14 +76,31 @@ class LLMResponseEvent(AgentEventBase):
 class ModelRouteEvent(AgentEventBase):
     """The selected LLM destination for a user turn."""
 
-    type: Literal["data"] = "data"
-    name: Literal["model_route"] = "model_route"
+    type: Literal["cmd", "data"] = "data"
+    name: str = "model_route"
     destination: str
     status: str
     latency_ms: int
     choice: str | None = None
     confidence: float | None = None
 
+class EndOfTurnEvent(AgentEventBase):
+    """Indicating the end of the turn."""
+
+    type: Literal["cmd", "data"] = "data"
+    name: str = "end_of_turn"
+    text: str
+    reason: Literal["jev", "fallback"] = "jev"
+    confidence: float
+
+class AgentInterruptEvent(AgentEventBase):
+    """Indicating the interruption of the user by the agent."""
+
+    type: Literal["cmd", "data"] = "data"
+    name: str = "agent_interrupt"
+    text: str
+    reason: Literal["jev", "fallback"] = "jev"
+    confidence: float
 
 # ==== Unified Event Union ====
 
@@ -95,4 +112,6 @@ AgentEvent = Union[
     ASRCommitTimeoutEvent,
     LLMResponseEvent,
     ModelRouteEvent,
+    EndOfTurnEvent,
+    AgentInterruptEvent,
 ]

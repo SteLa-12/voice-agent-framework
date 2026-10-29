@@ -70,8 +70,8 @@ class LLMExec:
         self.current_llm_dest: Optional[str] = None
         self.current_text = None
 
-    async def queue_input(self, item: str) -> None:
-        await self.input_queue.put(item)
+    async def queue_input(self, item: str, prompt: str | None = None) -> None:
+        await self.input_queue.put((item, prompt))
 
     async def flush(self) -> None:
         """
@@ -132,10 +132,10 @@ class LLMExec:
         """
         while not self.stopped:
             try:
-                text = await self.input_queue.get()
+                text, prompt = await self.input_queue.get()
                 new_message = LLMMessageContent(role="user", content=text)
                 self.current_task = self.loop.create_task(
-                    self._send_to_llm(self.ten_env, new_message)
+                    self._send_to_llm(self.ten_env, new_message, prompt)
                 )
                 await self.current_task
             except asyncio.CancelledError:
@@ -180,6 +180,7 @@ class LLMExec:
         ten_env: AsyncTenEnv,
         new_message: LLMMessage,
         llm_dest: Optional[str] = None,
+        prompt: str | None = None,
     ) -> None:
         if llm_dest is None:
             llm_dest = await self._choose_llm_dest(new_message.content)
@@ -204,6 +205,7 @@ class LLMExec:
             streaming=True,
             parameters=parameters,
             tools=self.available_tools,
+            prompt=prompt,
         )
         input_json = llm_input.model_dump()
         response = _send_cmd_ex(

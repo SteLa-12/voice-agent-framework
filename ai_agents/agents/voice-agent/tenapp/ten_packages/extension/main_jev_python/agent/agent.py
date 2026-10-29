@@ -9,12 +9,13 @@ from ten_ai_base.types import LLMToolMetadata
 from .events import (
     ASRCommitTimeoutEvent,
     ASRResultEvent,
-    AgentEvent,
+    AgentInterruptEvent,
     LLMResponseEvent,
     ModelRouteEvent,
     ToolRegisterEvent,
     UserJoinedEvent,
     UserLeftEvent,
+    AgentEvent,
 )
 
 
@@ -176,6 +177,16 @@ class Agent:
                 )
             elif data.get_name() in ("tts_audio_start", "tts_audio_end"):
                 return
+            elif data.get_name() == "agent_interrupt":
+                interrupt_json, _ = data.get_property_to_json(None)
+                interrupt = json.loads(interrupt_json)
+                await self._emit_direct(
+                    AgentInterruptEvent(
+                        text=interrupt.get("text", ""),
+                        reason=interrupt.get("reason", ""),
+                        confidence=interrupt.get("confidence", 0.0),
+                    )
+                )
             else:
                 self.ten_env.log_warn(f"Unhandled data: {data.get_name()}")
         except Exception as e:
@@ -219,12 +230,12 @@ class Agent:
         """
         await self.llm_exec.register_tool(tool, source)
 
-    async def queue_llm_input(self, text: str):
+    async def queue_llm_input(self, text: str, prompt_override: str | None = None):
         """
         Queue a new message to the LLM context.
         This method sends the text input to the LLM for processing.
         """
-        await self.llm_exec.queue_input(text)
+        await self.llm_exec.queue_input(text, prompt_override)
 
     async def flush_llm(self):
         """

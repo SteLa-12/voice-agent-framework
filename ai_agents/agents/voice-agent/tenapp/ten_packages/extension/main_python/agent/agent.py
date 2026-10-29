@@ -150,12 +150,24 @@ class Agent:
                         metadata=asr.get("metadata", {}),
                     )
                 )
-            if data.get_name() == "end_of_turn":
+            elif data.get_name() == "end_of_turn":
                 data_json, _ = data.get_property_to_json(None)
                 data_obj = json.loads(data_json)
                 await self._emit_direct(
                     EndOfTurnEvent(
                         text=data_obj.get("text", ""),
+                        reason=data_obj.get("reason", ""),
+                        confidence=data_obj.get("confidence", 0.0),
+                    )
+                )
+            elif data.get_name() == "agent_interrupt":
+                interrupt_json, _ = data.get_property_to_json(None)
+                interrupt_obj = json.loads(interrupt_json)
+                await self._emit_direct(
+                    EndOfTurnEvent(
+                        text=interrupt_obj.get("text", ""),
+                        reason=interrupt_obj.get("reason", ""),
+                        confidence=interrupt_obj.get("confidence", 0.0)
                     )
                 )
             elif data.get_name() in ("tts_audio_start", "tts_audio_end"):
@@ -192,12 +204,12 @@ class Agent:
         """
         await self.llm_exec.register_tool(tool, source)
 
-    async def queue_llm_input(self, text: str):
+    async def queue_llm_input(self, text: str, prompt_override: str | None = None):
         """
         Queue a new message to the LLM context.
         This method sends the text input to the LLM for processing.
         """
-        await self.llm_exec.queue_input(text)
+        await self.llm_exec.queue_input(text, prompt_override)
 
     async def flush_llm(self):
         """

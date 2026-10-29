@@ -53,6 +53,8 @@ class EndOfTurnEvent(AgentEventBase):
     type: Literal["data"] = "data"
     name: Literal["end_of_turn"] = "end_of_turn"
     text: str
+    reason: Literal["jev", "fallback"]
+    confidence: float
 
 class ASRResultEvent(AgentEventBase):
     """Event triggered when ASR result is received (partial or final)."""
@@ -73,6 +75,15 @@ class LLMResponseEvent(AgentEventBase):
     text: str
     is_final: bool
 
+class AgentInterruptEvent(AgentEventBase):
+    """Event triggered when there is an interrupt by the robot."""
+
+    type: Literal["data"] = "data"
+    name: Literal["agent_interrupt"] = "agent_interrupt"
+    text: str
+    reason: Literal["jev", "fallback"]
+    confidence: float
+
 
 # ==== Unified Event Union ====
 
@@ -84,4 +95,5 @@ AgentEvent = Union[
     LLMResponseEvent,
     EndOfTurnEvent,
     InterruptEvent,
+    AgentInterruptEvent,
 ]

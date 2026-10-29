@@ -14,6 +14,7 @@ from ten_runtime import (
 from .agent.agent import Agent
 from .agent.events import (
     ASRResultEvent,
+    AgentInterruptEvent,
     InterruptEvent,
     LLMResponseEvent,
     ToolRegisterEvent,
@@ -103,7 +104,6 @@ class MainControlExtension(AsyncExtension):
         self.turn_id += 1
         if self.agent:
             await self.agent.queue_llm_input(event.text)
-        # TODO: is this part correct..., is self.turn_id the correct value for the stream_id
         await self._send_transcript("user", event.text, True, int(self.session_id))
 
     @agent_event_handler(InterruptEvent)
@@ -131,6 +131,18 @@ class MainControlExtension(AsyncExtension):
             100,
             data_type=("reasoning" if event.type == "reasoning" else "text"),
         )
+
+    @agent_event_handler(AgentInterruptEvent)
+    async def _on_agent_interrupt(self, event: AgentInterruptEvent):
+        """Handle agent interrupts and direct it to the LLM."""
+
+        # Changing of turns
+        self.turn_id += 1
+
+        if self.agent and self.config is not None:
+            await self.agent.queue_llm_input(event.text, prompt_override=self.config.system_prompt + " " + self.config.interrupt_prompt)
+
+        await self._send_transcript("user", event.text, True, int(self.session_id))
 
     async def on_start(self, ten_env: AsyncTenEnv):
         ten_env.log_info("[MainControlExtension] on_start")
@@ -216,6 +228,20 @@ class MainControlExtension(AsyncExtension):
                 "metadata": self._current_metadata(),
             },
         ) if self.ten_env else None
+
+        # Also send the text input for the TTS module to Jev, such that it knows what the agent is telling.
+        await _send_data(
+            self.ten_env,
+            "tts_text_input",
+            "jev",
+            {
+                "request_id": request_id,
+                "text": text,
+                "text_input_end": is_final,
+                "metadata": self._current_metadata(),
+            },
+        ) if self.ten_env and text != "" else None
+
         self.ten_env.log_info(
             f"[MainControlExtension] Sent to TTS: is_final={is_final}, text={text}"
         ) if self.ten_env else None

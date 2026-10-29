@@ -29,6 +29,12 @@
       "properties": {
         "greeting": {
           "type": "string"
+        },
+        "system_prompt": {
+          "type": "string"
+        },
+        "interrupt_prompt": {
+          "type": "string"
         }
       }
     }
